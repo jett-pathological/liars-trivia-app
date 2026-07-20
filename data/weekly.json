@@ -1,0 +1,49 @@
+{
+  "Round 1": {
+    "category": "People",
+    "question": "Who recently had their wedding in madison square garden?",
+    "answer": "Taylor Swift and Travis Kelsey"
+  },
+
+  "Round 2": {
+    "category": "Places",
+    "question": "Where was the first world cup held?",
+    "answer": "Uruguay"
+  },
+
+  "Round 3": {
+    "category": "Things", 
+    "question": "Mamdani took away what from nyc children during the nba championships?",
+    "answer": "Curfew / Bedtime"
+  },
+
+  "Bonus Question 1": {
+    "category": "Places",
+    "question": "Where did the food chain Olive Garden originate?",
+    "answer": "Orlando, Florida"
+  },
+
+  "Round 4": {
+    "category": "People",
+    "question": "Which love island competitor was recently found out to be lying egregiously?",
+    "answer": "Sincere"
+  },
+
+  "Round 5": {
+    "category": "Places",
+    "question": "Where did Donald Trump's 'Freedom 250' celebratory fair take place?",
+    "answer": "National Mall"
+  },
+
+  "Round 6": {
+    "category": "Things",
+    "question": "In Queensland, Australia, what is only legal for magicians to own?",
+    "answer": "A rabbit"
+  },
+
+  "Bonus Question 2": {
+    "category": "People",
+    "question": "Who invented the telephone?",
+    "answer": "Alexander Graham Bell"
+  }
+}

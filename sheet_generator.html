@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Pathological — Answer Sheet Generator</title>
+    <style>
+        /* ── UI styles (hidden when printing) ── */
+        @media screen {
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+
+            body {
+                font-family: 'Helvetica Neue', Arial, sans-serif;
+                background: #1a1a2e;
+                color: #fff;
+                min-height: 100vh;
+                display: flex;
+                align-items: flex-start;
+                justify-content: center;
+                padding: 40px 20px;
+            }
+
+            .ui {
+                background: rgba(255, 255, 255, 0.06);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 16px;
+                padding: 36px 40px;
+                width: 100%;
+                max-width: 560px;
+            }
+
+            h1 {
+                font-size: 22px;
+                font-weight: 700;
+                margin-bottom: 6px;
+                color: #5CC2E6;
+                letter-spacing: 0.5px;
+            }
+
+            .subtitle {
+                font-size: 13px;
+                color: rgba(255, 255, 255, 0.5);
+                margin-bottom: 28px;
+            }
+
+            .field {
+                margin-bottom: 20px;
+            }
+
+            label {
+                display: block;
+                font-size: 12px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                color: rgba(255, 255, 255, 0.5);
+                margin-bottom: 6px;
+            }
+
+            .file-row {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                background: rgba(255, 255, 255, 0.06);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 8px;
+                padding: 10px 14px;
+            }
+
+            .file-row .cat-dot {
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+                flex-shrink: 0;
+            }
+
+            .dot-people {
+                background: #FCB415;
+            }
+
+            .dot-places {
+                background: #5CC2E6;
+            }
+
+            .dot-things {
+                background: #E94E67;
+            }
+
+            .file-row span {
+                font-size: 13px;
+                color: rgba(255, 255, 255, 0.7);
+                flex: 1;
+            }
+
+            .file-row input[type="file"] {
+                font-size: 12px;
+                color: rgba(255, 255, 255, 0.6);
+                background: transparent;
+                border: none;
+                cursor: pointer;
+                flex-shrink: 0;
+            }
+
+            .file-row input[type="file"]::file-selector-button {
+                background: rgba(255, 255, 255, 0.1);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 5px;
+                color: #fff;
+                padding: 4px 10px;
+                font-size: 12px;
+                cursor: pointer;
+            }
+
+            .count-row {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            }
+
+            .count-row input[type="number"] {
+                width: 80px;
+                background: rgba(255, 255, 255, 0.08);
+                border: 1px solid rgba(255, 255, 255, 0.15);
+                border-radius: 8px;
+                padding: 10px 14px;
+                color: #fff;
+                font-size: 16px;
+                font-weight: 700;
+                text-align: center;
+            }
+
+            .count-row span {
+                font-size: 13px;
+                color: rgba(255, 255, 255, 0.5);
+            }
+
+            .session-row {
+                display: flex;
+                gap: 10px;
+            }
+
+            .session-row input[type="text"] {
+                flex: 1;
+                background: rgba(255, 255, 255, 0.08);
+                border: 1px solid rgba(255, 255, 255, 0.15);
+                border-radius: 8px;
+                padding: 10px 14px;
+                color: #fff;
+                font-size: 14px;
+            }
+
+            .session-row input[type="text"]::placeholder {
+                color: rgba(255, 255, 255, 0.3);
+            }
+
+            .btn-generate {
+                width: 100%;
+                background: #5CC2E6;
+                color: #000;
+                border: none;
+                border-radius: 10px;
+                padding: 14px;
+                font-size: 16px;
+                font-weight: 700;
+                cursor: pointer;
+                margin-top: 24px;
+                transition: background 0.15s;
+            }
+
+            .btn-generate:hover {
+                background: #7de8ff;
+            }
+
+            .btn-generate:disabled {
+                background: #444;
+                color: #888;
+                cursor: not-allowed;
+            }
+
+            .status {
+                margin-top: 14px;
+                font-size: 13px;
+                color: rgba(255, 255, 255, 0.5);
+                text-align: center;
+                min-height: 18px;
+            }
+
+            .sheets-preview {
+                display: none;
+            }
+        }
+
+        /* ── Print / sheet styles ── */
+        @media print {
+            .ui {
+                display: none !important;
+            }
+
+            .sheets-preview {
+                display: block !important;
+            }
+
+            body {
+                margin: 0;
+                padding: 0;
+                background: white;
+            }
+
+            * {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+
+        /* ── Sheet layout (used in both preview and print) ── */
+        .page {
+            width: 210mm;
+            height: 148mm;
+            /* A5 landscape */
+            display: flex;
+            gap: 0;
+            overflow: hidden;
+            page-break-after: always;
+        }
+
+        /* Each half-sheet */
+        .half {
+            width: 105mm;
+            height: 148mm;
+            border: 0.5px solid #ccc;
+            display: flex;
+            flex-direction: column;
+            font-family: Arial, Helvetica, sans-serif;
+            overflow: hidden;
+            padding: 3mm 3.5mm 2.5mm;
+            position: relative;
+        }
+
+        .half+.half {
+            border-left: 1px dashed #bbb;
+        }
+
+        /* Header */
+        .sheet-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 2mm;
+            font-size: 6pt;
+            color: #333;
+        }
+
+        .sheet-header .brand {
+            font-size: 7.5pt;
+        }
+
+        .brand b {
+            font-family: 'Arial Black', Arial, sans-serif;
+            font-size: 8.5pt;
+        }
+
+        .sheet-header .session-code {
+            color: #999;
+            font-size: 6pt;
+        }
+
+        /* Name line */
+        .name-row {
+            display: flex;
+            align-items: center;
+            gap: 4mm;
+            margin-bottom: 1.5mm;
+            font-size: 7pt;
+            color: #888;
+        }
+
+        .name-line {
+            flex: 1;
+            border-bottom: 0.5px solid #bbb;
+            height: 5mm;
+        }
+
+        /* Cross-off notice */
+        .crossoff {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 1.5mm;
+            font-size: 6pt;
+            color: #555;
+            margin-bottom: 1.5mm;
+        }
+
+        .cross-x {
+            width: 5mm;
+            height: 5mm;
+            border: 0.75px solid #555;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8pt;
+            font-weight: 700;
+            color: #555;
+            line-height: 1;
+        }
+
+        /* Scoring row */
+        .scoring {
+            display: flex;
+            align-items: center;
+            gap: 1.5mm;
+            font-size: 5.5pt;
+            margin-bottom: 2mm;
+            flex-wrap: nowrap;
+        }
+
+        .scoring-block {
+            display: flex;
+            align-items: center;
+            gap: 1mm;
+            white-space: nowrap;
+        }
+
+        .score-eq {
+            color: #888;
+            margin: 0 0.5mm;
+        }
+
+        .score-prize {
+            border: 0.75px solid #333;
+            border-radius: 2px;
+            padding: 0.5mm 1.5mm;
+            font-size: 5pt;
+            font-weight: 700;
+            text-align: center;
+            line-height: 1.3;
+        }
+
+        .score-stars {
+            color: #333;
+            font-size: 7pt;
+            letter-spacing: -1px;
+        }
+
+        .icon-cup {
+            font-size: 7pt;
+        }
+
+        .icon-dollar {
+            font-size: 7pt;
+        }
+
+        .icon-box {
+            font-size: 7pt;
+        }
+
+        /* Main answer grid */
+        .answer-grid {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 26mm 26mm 26mm 15mm;
+            gap: 1mm;
+            align-items: start;
+        }
+
+        .col-header {
+            font-family: 'Arial Black', Arial, sans-serif;
+            font-size: 7.5pt;
+            font-weight: 900;
+            text-transform: uppercase;
+            text-align: center;
+            line-height: 1.1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5mm;
+        }
+
+        .col-header .arrows {
+            font-size: 7pt;
+            letter-spacing: 2px;
+        }
+
+        .col-header.points-hdr {
+            font-size: 8pt;
+            border: 1px dashed #bbb;
+            padding: 1.5mm;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 2px;
+        }
+
+        .answer-col {
+            display: flex;
+            flex-direction: column;
+            gap: 1mm;
+        }
+
+        .answer-box {
+            border: 0.75px solid #ccc;
+            border-radius: 2.5px;
+            padding: 1mm 1.5mm;
+            font-size: 6pt;
+            color: #222;
+            min-height: 11mm;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+            line-height: 1.25;
+            text-align: center;
+        }
+
+        .answer-box .cat-icon {
+            position: absolute;
+            bottom: 1mm;
+            right: 1.5mm;
+            font-size: 7pt;
+            opacity: 0.45;
+        }
+
+        .answer-box.tall {
+            min-height: 14mm;
+        }
+
+        /* places boxes are a touch taller */
+
+        /* Pre-filled answer text */
+        .answer-text {
+            font-size: 6.5pt;
+            color: #222;
+            line-height: 1.2;
+        }
+
+        /* Footer */
+        .sheet-footer {
+            display: flex;
+            align-items: center;
+            gap: 2mm;
+            margin-top: 1.5mm;
+            font-size: 5.5pt;
+            color: #888;
+            flex-wrap: wrap;
+        }
+
+        .footer-pill {
+            border: 0.5px solid #bbb;
+            border-radius: 999px;
+            padding: 0.5mm 2mm;
+            display: flex;
+            align-items: center;
+            gap: 1mm;
+        }
+
+        .newsletter-row {
+            margin-top: 1mm;
+            font-size: 5.5pt;
+            color: #888;
+            display: flex;
+            align-items: center;
+            gap: 2mm;
+        }
+
+        .email-line {
+            border-bottom: 0.5px solid #bbb;
+            flex: 1;
+            height: 4mm;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="ui">
+        <h1>Answer Sheet Generator</h1>
+        <p class="subtitle">Upload your question CSVs, choose a quantity, and print.</p>
+
+        <div class="field">
+            <label>CSV Files</label>
+            <div class="file-row" style="margin-bottom:6px">
+                <div class="cat-dot dot-people"></div>
+                <span>People questions</span>
+                <input type="file" id="csvPeople" accept=".csv">
+            </div>
+            <div class="file-row" style="margin-bottom:6px">
+                <div class="cat-dot dot-places"></div>
+                <span>Places questions</span>
+                <input type="file" id="csvPlaces" accept=".csv">
+            </div>
+            <div class="file-row">
+                <div class="cat-dot dot-things"></div>
+                <span>Things questions</span>
+                <input type="file" id="csvThings" accept=".csv">
+            </div>
+        </div>
+
+        <div class="field">
+            <label>Session code (optional)</label>
+            <div class="session-row">
+                <input type="text" id="sessionCode" placeholder="e.g. LT027" maxlength="8">
+            </div>
+        </div>
+
+        <div class="field">
+            <label>Number of sheets to generate</label>
+            <div class="count-row">
+                <input type="number" id="sheetCount" value="20" min="1" max="200">
+                <span>sheets &nbsp;(2 half-sheets per printed page)</span>
+            </div>
+        </div>
+
+        <button class="btn-generate" id="btnGenerate">Generate &amp; Print</button>
+        <p class="status" id="status">Upload at least one CSV to begin.</p>
+    </div>
+
+    <div class="sheets-preview" id="sheetsPreview"></div>
+
+    <script>
+        // ── CSV parser (same logic as app.js) ────────────────────────
+        function parseCSV(text) {
+            const rows = [];
+            let i = 0;
+            text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+            while (i < text.length) {
+                const cols = [];
+                while (i < text.length && text[i] !== '\n') {
+                    if (text[i] === '"') {
+                        i++;
+                        let val = '';
+                        while (i < text.length) {
+                            if (text[i] === '"' && text[i + 1] === '"') { val += '"'; i += 2; }
+                            else if (text[i] === '"') { i++; break; }
+                            else { val += text[i++]; }
+                        }
+                        cols.push(val.replace(/\n/g, ' ').trim());
+                    } else {
+                        let val = '';
+                        while (i < text.length && text[i] !== ',' && text[i] !== '\n') val += text[i++];
+                        cols.push(val.trim());
+                    }
+                    if (text[i] === ',') i++;
+                }
+                if (text[i] === '\n') i++;
+                if (cols.length >= 2 && cols[0]) rows.push({ question: cols[0], answer: cols[1] });
+            }
+            return rows;
+        }
+
+        function readFile(input) {
+            return new Promise((resolve) => {
+                if (!input.files[0]) return resolve([]);
+                const r = new FileReader();
+                r.onload = e => resolve(parseCSV(e.target.result));
+                r.readAsText(input.files[0]);
+            });
+        }
+
+        function shuffle(arr) {
+            const a = [...arr];
+            for (let i = a.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [a[i], a[j]] = [a[j], a[i]];
+            }
+            return a;
+        }
+
+        function pick4(pool) {
+            if (!pool.length) return Array(4).fill({ question: '', answer: '' });
+            return shuffle(pool).slice(0, 4);
+        }
+
+        // ── Sheet HTML builder ───────────────────────────────────────
+        function buildAnswerBox(item, catIcon) {
+            const text = item.answer || '';
+            return `
+    <div class="answer-box">
+      <span class="answer-text">${escHtml(text)}</span>
+      <span class="cat-icon">${catIcon}</span>
+    </div>`;
+        }
+
+        function escHtml(s) {
+            return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function buildHalf(people4, places4, things4, sessionCode) {
+            const code = sessionCode || '';
+            return `
+  <div class="half">
+    <div class="sheet-header">
+      <div class="brand">The <b>PATHOLOGICAL</b> Live Pub Trivia Game Night</div>
+      <div class="session-code">${escHtml(code)}</div>
+    </div>
+
+    <div class="name-row">
+      <span>Name</span>
+      <div class="name-line"></div>
+      <div class="crossoff">
+        <span>Cross-off answers after use</span>
+        <div class="cross-x">✕</div>
+      </div>
+    </div>
+
+    <div class="scoring">
+      <span class="score-stars">★★<br>★★</span>
+      <span class="score-eq">=</span>
+      <div class="score-prize">6x<br>Points</div>
+      <span style="color:#888;font-size:5pt">1 Shot</span>
+      <span class="score-eq">&nbsp;=</span>
+      <div class="score-prize">2nd Place<br>Prize</div>
+      <span style="color:#888;font-size:5pt">Bar Tab $</span>
+      <span class="score-eq">=</span>
+      <div class="score-prize">1st Place<br>Prize</div>
+      <span style="color:#888;font-size:5pt">Game</span>
+      <span class="score-stars">★<br>★</span>
+    </div>
+
+    <div class="answer-grid">
+      <!-- PEOPLE header -->
+      <div class="col-header">PEOPLE<br>ANSWERS<div class="arrows">↓ ↓</div></div>
+      <!-- PLACES header -->
+      <div class="col-header">PLACES<br>ANSWERS<div class="arrows">↑ ↑</div></div>
+      <!-- THINGS header -->
+      <div class="col-header">THINGS<br>ANSWERS<div class="arrows">↓ ↓</div></div>
+      <!-- POINTS header -->
+      <div class="col-header points-hdr">POINTS</div>
+
+      <!-- PEOPLE answers -->
+      <div class="answer-col">
+        ${people4.map(p => buildAnswerBox(p, '👤')).join('')}
+      </div>
+      <!-- PLACES answers -->
+      <div class="answer-col">
+        ${places4.map(p => buildAnswerBox(p, '📍')).join('')}
+      </div>
+      <!-- THINGS answers -->
+      <div class="answer-col">
+        ${things4.map(p => buildAnswerBox(p, '⭐')).join('')}
+      </div>
+      <!-- POINTS boxes (empty) -->
+      <div class="answer-col">
+        <div class="answer-box" style="min-height:47mm;"></div>
+      </div>
+    </div>
+
+    <div class="sheet-footer">
+      <div class="footer-pill">📷 @pathologicalgame</div>
+      <div class="footer-pill">🔍 pathological card game</div>
+      <div class="footer-pill">🌐 pathologicalgame.com</div>
+    </div>
+    <div class="newsletter-row">
+      <span>✉ Sign up to the newsletter for exclusives:</span>
+      <div class="email-line"></div>
+    </div>
+  </div>`;
+        }
+
+        function buildPage(people, places, things, sessionCode) {
+            // Each page = 2 identical half-sheets
+            const p4 = pick4(people);
+            const pl4 = pick4(places);
+            const t4 = pick4(things);
+            const half = buildHalf(p4, pl4, t4, sessionCode);
+            return `<div class="page">${half}${half}</div>`;
+        }
+
+        // ── Generate ─────────────────────────────────────────────────
+        document.getElementById('btnGenerate').addEventListener('click', async () => {
+            const btn = document.getElementById('btnGenerate');
+            const status = document.getElementById('status');
+
+            btn.disabled = true;
+            status.textContent = 'Reading CSVs…';
+
+            const [people, places, things] = await Promise.all([
+                readFile(document.getElementById('csvPeople')),
+                readFile(document.getElementById('csvPlaces')),
+                readFile(document.getElementById('csvThings')),
+            ]);
+
+            if (!people.length && !places.length && !things.length) {
+                status.textContent = 'Please upload at least one CSV file.';
+                btn.disabled = false;
+                return;
+            }
+
+            const n = Math.max(1, Math.min(200, parseInt(document.getElementById('sheetCount').value) || 20));
+            const code = document.getElementById('sessionCode').value.trim();
+
+            status.textContent = `Generating ${n} sheets…`;
+
+            let html = '';
+            for (let i = 0; i < n; i++) {
+                html += buildPage(people, places, things, code);
+            }
+
+            const preview = document.getElementById('sheetsPreview');
+            preview.style.display = 'block';
+            preview.innerHTML = html;
+
+            status.textContent = `${n} sheets ready. Opening print dialog…`;
+            btn.disabled = false;
+
+            setTimeout(() => window.print(), 400);
+        });
+
+        // Enable button once any file is picked
+        ['csvPeople', 'csvPlaces', 'csvThings'].forEach(id => {
+            document.getElementById(id).addEventListener('change', () => {
+                document.getElementById('status').textContent = 'Ready to generate.';
+            });
+        });
+    </script>
+</body>
+
+</html>
