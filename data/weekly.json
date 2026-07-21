@@ -1,49 +1,49 @@
 {
   "Round 1": {
     "category": "People",
-    "question": "Who recently had their wedding in madison square garden?",
-    "answer": "Taylor Swift and Travis Kelsey"
+    "question": "During the World Cup who did the President ask FIFA to revoke a red card for?",
+    "answer": "Folarin Baloguny"
   },
 
   "Round 2": {
     "category": "Places",
-    "question": "Where was the first world cup held?",
-    "answer": "Uruguay"
+    "question": "Kite flying is a professional sport where?",
+    "answer": "Thailand"
   },
 
   "Round 3": {
     "category": "Things", 
-    "question": "Mamdani took away what from nyc children during the nba championships?",
-    "answer": "Curfew / Bedtime"
+    "question": "In 2012 an astronaut took on item to space to do tricks in Zero G. What was it?",
+    "answer": "A Yo-yo"
   },
 
   "Bonus Question 1": {
     "category": "Places",
-    "question": "Where did the food chain Olive Garden originate?",
-    "answer": "Orlando, Florida"
+    "question": "Where has been booked out of screenings for Nolan's new film The Odyssey for the next month?",
+    "answer": "IMAX 70mm cinemas"
   },
 
   "Round 4": {
     "category": "People",
-    "question": "Which love island competitor was recently found out to be lying egregiously?",
-    "answer": "Sincere"
+    "question": "Who commonly interviews people on the NYC subway asking for their opinions?",
+    "answer": "Kareem Rahma"
   },
 
   "Round 5": {
     "category": "Places",
-    "question": "Where did Donald Trump's 'Freedom 250' celebratory fair take place?",
-    "answer": "National Mall"
+    "question": "Due to tour-illness Harry Styles cancelled his show where?",
+    "answer": "Brazil"
   },
 
   "Round 6": {
     "category": "Things",
-    "question": "In Queensland, Australia, what is only legal for magicians to own?",
-    "answer": "A rabbit"
+    "question": "Rainbows on Venus are not called 'rainbows', they are known as what?",
+    "answer": "A Glory"
   },
 
   "Bonus Question 2": {
-    "category": "People",
-    "question": "Who invented the telephone?",
-    "answer": "Alexander Graham Bell"
+    "category": "Things",
+    "question": "The air quality in NYC has been bad recently because of something burning in Canada. What is burning?",
+    "answer": "Trees"
   }
 }
