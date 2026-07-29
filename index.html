@@ -12,73 +12,103 @@
   <div id="editor">
 
     <header id="editorHeader">
-      <h1>Trivia Host Panel</h1>
-
+      <h1>Liar's Trivia Host Panel</h1>
       <div id="editorHeaderActions">
-        <button id="resetWeekly">Reset Weekly Questions</button>
         <button id="fullscreenBtn">Fullscreen</button>
       </div>
     </header>
 
     <div id="editorLayout">
 
-      <!-- Left side controls -->
+      <!-- Left sidebar -->
       <aside id="editorSidebar">
 
-        <div id="editorActions">
-          <button id="startTrivia">Start Trivia</button>
-          <button id="printSheetsBtn">Print Answer Sheets</button>
+        <div class="sidebar-section">
+          <h3>Game Style</h3>
+
+          <div class="settingCard" id="questionCountRow">
+            <label class="settingCardLabel">Number of questions</label>
+            <div class="settingCountWrap">
+              <button class="settingCountBtn" id="questionCountMinus">−</button>
+              <span id="questionCountVal">8</span>
+              <button class="settingCountBtn" id="questionCountPlus">+</button>
+            </div>
+          </div>
+
+          <div class="settingRow">
+            <label class="settingToggle">
+              <input type="checkbox" id="toggleAnswerOptions">
+              <span class="settingToggleTrack"><span class="settingToggleThumb"></span></span>
+              Answer Options Mode
+            </label>
+          </div>
+
+          <div class="settingCard" id="answerCountRow">
+            <label class="settingCardLabel">Options per question</label>
+            <div class="settingCountWrap">
+              <button class="settingCountBtn" id="answerCountMinus">−</button>
+              <span id="answerCountVal">4</span>
+              <button class="settingCountBtn" id="answerCountPlus">+</button>
+            </div>
+          </div>
+
+          <button id="startTrivia" class="sidebarBtn sidebarBtnFilled">Start Trivia</button>
         </div>
 
-        <h3>Session Info</h3>
-        <p id="updateNotice" style="display:none;">New weekly trivia available</p>
-
-        <div class="hostTips">
-          <h4>Keyboard Controls</h4>
-          <ul>
-            <li>➡ Next Slide</li>
-            <li>⬅ Previous Slide</li>
-            <li>Q Reveal Question</li>
-            <li>A Reveal Answer</li>
-            <li>SPACE Start Timer</li>
-            <li>R Reset Timer</li>
-            <li>D Decision Overlay</li>
-            <li>S Show Answer Cards</li>
-            <li>1–9 Toggle Card Used</li>
-          </ul>
+        <div class="sidebar-section">
+          <div class="sidebarSectionHeader">
+            <h3>Keyboard Shortcuts</h3>
+            <span class="sidebarEditLink" id="shortcutEditBtn">Edit</span>
+          </div>
+          <p id="updateNotice" style="display:none;">New weekly trivia available</p>
+          <ul class="shortcutList" id="shortcutList"></ul>
+          <button class="shortcutResetBtn" id="shortcutResetBtn">Reset to Default</button>
         </div>
 
-        <h3>Display Settings</h3>
+        <div class="sidebar-section">
+          <h3>Display Settings</h3>
 
-        <div class="settingRow">
-          <label class="settingToggle">
-            <input type="checkbox" id="toggleAnswerOptions">
-            <span class="settingToggleTrack"><span class="settingToggleThumb"></span></span>
-            Answer Options Mode
-          </label>
-        </div>
+          <div class="settingRow">
+            <label class="settingToggle">
+              <input type="checkbox" id="toggleBWMode">
+              <span class="settingToggleTrack"><span class="settingToggleThumb"></span></span>
+              Black & White Mode
+            </label>
+          </div>
 
-        <div class="settingRow" id="answerCountRow">
-          <label class="settingLabel">Options per question</label>
-          <div class="settingCountWrap">
-            <button class="settingCountBtn" id="answerCountMinus">−</button>
-            <span id="answerCountVal">4</span>
-            <button class="settingCountBtn" id="answerCountPlus">+</button>
+          <div class="settingRow">
+            <label class="settingToggle">
+              <input type="checkbox" id="togglePromos" checked>
+              <span class="settingToggleTrack"><span class="settingToggleThumb"></span></span>
+              Show Promo Slides
+            </label>
           </div>
         </div>
 
-        <div class="settingRow">
-          <label class="settingToggle">
-            <input type="checkbox" id="togglePromos" checked>
-            <span class="settingToggleTrack"><span class="settingToggleThumb"></span></span>
-            Show Promo Slides
-          </label>
+        <div class="sidebar-spacer"></div>
+
+        <div class="sidebar-section">
+          <button id="printSheetsBtn" class="sidebarBtn sidebarBtnBezeled">Print Answer Sheets</button>
         </div>
 
       </aside>
 
       <!-- Right side question editor -->
-      <main id="editorFields"></main>
+      <main id="editorFields">
+        <div id="questionListHeader">
+          <div id="questionListHeaders">
+            <span class="qheader qheader-round">Round</span>
+            <span class="qheader qheader-cat">Category</span>
+            <span class="qheader qheader-question">Question</span>
+          </div>
+          <div id="questionListActions">
+            <button id="saveQuestionsBtn" class="headerActionBtn">Save Questions as File</button>
+            <button id="uploadQuestionsBtn" class="headerActionBtn">Upload File</button>
+            <button id="resetWeekly" class="headerActionBtn headerActionBtnPrimary">Reset to Weekly Questions</button>
+            <input type="file" id="uploadQuestionsInput" accept=".csv" style="display:none">
+          </div>
+        </div>
+      </main>
 
     </div>
 
@@ -88,6 +118,8 @@
     <!-- Control Buttons -->
     <button id="backBtn" class="top-left">Main Menu</button>
     <button id="fullscreenBtnPresentation" class="top-right">Fullscreen</button>
+    <button id="slideLeftBtn" class="side-nav side-nav-left">◀</button>
+    <button id="slideRightBtn" class="side-nav side-nav-right">▶</button>
 
     <!-- Slide Content -->
     <div id="slide"></div>
@@ -97,20 +129,6 @@
       <div id="timerTextBg">30 SECONDS</div>
       <div id="timerBar">
         <div id="timerText">30 SECONDS</div>
-      </div>
-    </div>
-
-    <!-- Decision Overlay -->
-    <div id="decisionOverlay" style="display:none;">
-      <div id="decisionBox">
-        <h2>Choose Your Decision</h2>
-        <button id="makePeaceBtn">Make Peace
-          <p>1 point each</p>
-        </button>
-        <button id="doubleBtn">Double or Nothing
-          <p>2 points to winner</p>
-        </button>
-        <img id="decisionGif" src="img/decision.gif" alt="">
       </div>
     </div>
   </div>

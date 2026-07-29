@@ -1,6 +1,7 @@
 let timer = 30;
 let interval = null;
 let preCountdown = null;
+let currentCountdownAudio = null;
 
 function setTimerText(val) {
   const text = document.getElementById("timerText");
@@ -12,6 +13,7 @@ function setTimerText(val) {
 function startTimer() {
   clearInterval(interval);
   clearInterval(preCountdown);
+  stopCountdown();
   const bar = document.getElementById("timerBar");
   const text = document.getElementById("timerTextBg");
   if (!text) return;
@@ -44,6 +46,7 @@ function startTimer() {
 function resetTimer() {
   clearInterval(interval);
   clearInterval(preCountdown);
+  stopCountdown();
   timer = 30;
   const bar = document.getElementById("timerBar");
   const text = document.getElementById("timerTextBg");
@@ -76,8 +79,16 @@ function updateTimerDisplay() {
 }
 
 function playCountdown() {
-  var audio = new Audio('audio/countdown.mp3');
-  audio.play();
+  currentCountdownAudio = new Audio('audio/countdown.mp3');
+  currentCountdownAudio.play();
+}
+
+function stopCountdown() {
+  if (currentCountdownAudio) {
+    currentCountdownAudio.pause();
+    currentCountdownAudio.currentTime = 0;
+    currentCountdownAudio = null;
+  }
 }
 
 function playAlarm() {

@@ -1,13 +1,32 @@
 let slides = [];
 let current = 0;
+let questionCount = 0;       // total number of question slides (regular + bonus)
 let weeklyVersion = null;
 let bwMode = false;
 let promoInterval = null;
 let answersMode = false;   // show answer option cards on question slides
 let answersCount = 4;      // how many answer cards to show
 let showPromos = true;     // whether promo slides are included
+let intermissionOn = false; // whether intermission slide is shown
+let intermissionAfterRound = 3; // number of questions before intermission
 const questionBank = {};   // keyed by category, loaded on demand
 const answersBank = {};    // keyed by category, first-column answers only
+
+// ── Keyboard shortcuts config ──────────────────────────────────
+const DEFAULT_SHORTCUTS = {
+  nextSlide:      { key: 'ArrowRight', label: '➡', action: 'Next Slide' },
+  prevSlide:      { key: 'ArrowLeft',  label: '⬅', action: 'Previous Slide' },
+  revealQuestion: { key: 'q',          label: 'Q', action: 'Reveal Question' },
+  revealAnswer:   { key: 'a',          label: 'A', action: 'Reveal Answer' },
+  startTimer:     { key: ' ',          label: 'SPACE', action: 'Start Timer' },
+  resetTimer:     { key: 'r',          label: 'R', action: 'Reset Timer' },
+  decisionOverlay:{ key: 'd',          label: 'D', action: 'Decision Overlay' },
+  showAnswerCards:{ key: 's',          label: 'S', action: 'Show/Hide Answer Cards' },
+  toggleCards:    { key: '1–9',        label: '1–9', action: 'Toggle Card Used' },
+};
+let shortcuts = JSON.parse(JSON.stringify(DEFAULT_SHORTCUTS));
+let shortcutEditing = false;
+let capturingKey = null; // action key currently capturing
 
 // ── Category colours (must match CSS) ───────────────────────
 const CAT_COLOURS = {
@@ -17,21 +36,59 @@ const CAT_COLOURS = {
 };
 
 // ── Progress bar config ──────────────────────────────────────
-const PROGRESS_STEPS = [
-  { label: "Round 1", display: "1", bonus: false },
-  { label: "Round 2", display: "2", bonus: false },
-  { label: "Round 3", display: "3", bonus: false },
-  { label: "Bonus Question 1", display: "★", bonus: true },
-  { label: "Round 4", display: "4", bonus: false },
-  { label: "Round 5", display: "5", bonus: false },
-  { label: "Round 6", display: "6", bonus: false },
-  { label: "Bonus Question 2", display: "★", bonus: true },
-];
+function getProgressSteps() {
+  const steps = [];
+  let regIdx = 0;
+  let bonIdx = 0;
+  slides.forEach(s => {
+    if (s.type !== 'question') return;
+    if (s.isBonus) {
+      bonIdx++;
+      steps.push({ label: s.label, display: "★", bonus: true });
+    } else {
+      regIdx++;
+      steps.push({ label: s.label, display: String(regIdx), bonus: false });
+    }
+  });
+  return steps;
+}
+
+// ── Assign Slide Labels ──────────────────────────────────────
+function assignSlideLabels() {
+  let regCount = 0;
+  let bonCount = 0;
+  slides.forEach(s => {
+    if (s.type !== 'question') return;
+    if (s.isBonus) {
+      bonCount++;
+      s.label = 'Bonus Question ' + bonCount;
+    } else {
+      regCount++;
+      s.label = 'Round ' + regCount;
+    }
+  });
+}
 
 // ── Data loading ─────────────────────────────────────────────
 async function loadWeeklyQuestions() {
-  const res = await fetch("data/weekly.json");
-  return res.json();
+  const res = await fetch("data/weekly.csv");
+  const text = await res.text();
+  return parseWeeklyCSV(text);
+}
+
+function parseWeeklyCSV(text) {
+  const rows = parseCSVWithHeaders(text);
+  const result = {};
+  for (const row of rows) {
+    if (row.label && row.category && row.question) {
+      result[row.label] = {
+        category: row.category,
+        question: row.question,
+        answer: row.answer || "",
+      };
+    }
+  }
+  return result;
 }
 
 function getWeeklyHash(obj) { return JSON.stringify(obj); }
@@ -63,6 +120,65 @@ function parseCSV(text) {
     }
     if (text[i] === '\n') i++;
     if (cols.length >= 2 && cols[0]) rows.push({ question: cols[0], answer: cols[1] });
+  }
+  return rows;
+}
+
+function parseCSVWithHeaders(text) {
+  const rows = [];
+  let i = 0;
+  text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // strip BOM
+
+  // Parse header row
+  const headers = [];
+  while (i < text.length && text[i] !== '\n') {
+    if (text[i] === '"') {
+      i++;
+      let val = '';
+      while (i < text.length) {
+        if (text[i] === '"' && text[i + 1] === '"') { val += '"'; i += 2; }
+        else if (text[i] === '"') { i++; break; }
+        else { val += text[i++]; }
+      }
+      headers.push(val.trim());
+    } else {
+      let val = '';
+      while (i < text.length && text[i] !== ',' && text[i] !== '\n') val += text[i++];
+      headers.push(val.trim());
+    }
+    if (text[i] === ',') i++;
+  }
+  if (text[i] === '\n') i++;
+
+  // Parse data rows
+  while (i < text.length) {
+    const cols = [];
+    while (i < text.length && text[i] !== '\n') {
+      if (text[i] === '"') {
+        i++;
+        let val = '';
+        while (i < text.length) {
+          if (text[i] === '"' && text[i + 1] === '"') { val += '"'; i += 2; }
+          else if (text[i] === '"') { i++; break; }
+          else { val += text[i++]; }
+        }
+        cols.push(val.replace(/\n/g, ' ').trim());
+      } else {
+        let val = '';
+        while (i < text.length && text[i] !== ',' && text[i] !== '\n') val += text[i++];
+        cols.push(val.trim());
+      }
+      if (text[i] === ',') i++;
+    }
+    if (text[i] === '\n') i++;
+
+    // Build row object from headers
+    if (cols.length >= 2 && cols[0]) {
+      const row = {};
+      headers.forEach((h, idx) => { row[h] = cols[idx] || ''; });
+      rows.push(row);
+    }
   }
   return rows;
 }
@@ -153,33 +269,16 @@ async function randomiseAnswerOptions(slideIndex) {
 }
 
 function buildSlides() {
-  const all = [
-    //LIARS TRIVIA
+  return [
     { type: "title", text: "Welcome to Liar's Trivia!", img: "lt_logo_motion" },
     { type: "intro", text: "Pathological is a trivia game, but… You don't have to know the right answer!" },
     { type: "tutorial", text: "Your answer sheet looks like this:", img: "tutorial_sheet" },
     { type: "tutorial", text: "Pick the answer you like and have 30 seconds to justify it.", img: "tutorial_sheet2" },
     { type: "tutorial", text: "The best two answers can either Make Peace or go Double or Nothing!", img: "tutorial_decision" },
     { type: "tutorial", text: "Go to @pathologicalgame on Instagram for bonus question sneak peeks.", img: "tutorial_ig" },
-    { type: "question", label: "Round 1" },
-    { type: "question", label: "Round 2" },
-    { type: "question", label: "Round 3" },
-    // { type: "promo", text: "Check out our board game PATHOLOGICAL!", img: "promo1" },
-    // { type: "bonusIntro" },
-    { type: "question", label: "Bonus Question 1" },
-    { type: "score", text: "INTERMISSION! Grab yourself a drink while you wait." },
-    { type: "question", label: "Round 4" },
-    { type: "question", label: "Round 5" },
-    { type: "question", label: "Round 6" },
-    { type: "promo", text: "Visit pathologicalgame.com!", img: "promo2" },
-    // { type: "bonusIntro" },
-    { type: "question", label: "Bonus Question 2" },
-    // { type: "score", text: "Thank you for coming!" },
-    { type: "score", text: "Tallying scores..." },
-    { type: "title", text: "Thanks for playing!", img: "lt_logo_motion" },
   ];
-  return showPromos ? all : all.filter(s => s.type !== "promo");
 }
+
 
 async function loadTriviaData() {
   const stored = localStorage.getItem("triviaData");
@@ -192,33 +291,67 @@ async function loadTriviaData() {
   }
   weeklyVersion = currentHash;
 
-  if (stored) return JSON.parse(stored);
+  if (stored) {
+    const parsed = JSON.parse(stored);
+    parsed.forEach(s => {
+      if (s.type === 'question' && s.isBonus === undefined) s.isBonus = false;
+    });
+    return parsed;
+  }
 
-  const slidesArr = buildSlides();
-  slidesArr.forEach(slide => {
-    if (slide.type === "question") {
-      const q = weeklyQuestions[slide.label];
-      slide.category = q?.category || "";
-      slide.question = q?.question || "";
-      slide.answer = q?.answer || "";
-      slide.answerOptions = []; // pre-filled via editor
+  // Parse weekly.json dynamically — extract all question entries
+  const framework = buildSlides();
+  const questions = [];
+  const closing = [
+    { type: "promo", text: "Visit pathologicalgame.com!", img: "promo2" },
+    { type: "score", text: "Tallying scores..." },
+    { type: "title", text: "Thanks for playing!", img: "lt_logo_motion" },
+  ];
+
+  for (const [label, data] of Object.entries(weeklyQuestions)) {
+    if (data && typeof data === 'object' && data.question) {
+      questions.push({
+        type: "question",
+        label: label,
+        category: data.category || "",
+        question: data.question,
+        answer: data.answer || "",
+        answerOptions: [],
+        isBonus: label.toLowerCase().includes("bonus"),
+      });
     }
-  });
+  }
+
+  const all = [...framework, ...questions, ...closing];
+  const slidesArr = showPromos ? all : all.filter(s => s.type !== "promo");
+  assignSlideLabels();
   localStorage.setItem("triviaData", JSON.stringify(slidesArr));
   localStorage.setItem("weeklyHash", currentHash);
   return slidesArr;
 }
 
+
 // ── Editor ───────────────────────────────────────────────────
 function buildEditor(slides) {
   const editor = document.getElementById("editorFields");
-  editor.innerHTML = "";
+  // Remove old question rows and intermission row but keep the header
+  editor.querySelectorAll(".qrow, .intermission-row").forEach(el => el.remove());
+
+  const totalQuestions = slides.filter(s => s.type === "question").length;
+  // Clamp intermission position
+  if (intermissionAfterRound < 1) intermissionAfterRound = 1;
+  if (intermissionAfterRound >= totalQuestions) intermissionAfterRound = totalQuestions - 1;
+  if (totalQuestions < 2) intermissionOn = false;
+
+  let questionNum = 0;
 
   slides.forEach((slide, i) => {
     if (slide.type !== "question") return;
-    const isBonus = slide.label.toLowerCase().includes("bonus");
+    questionNum++;
     const catClass = { People: "cat-people", Places: "cat-places", Things: "cat-things" }[slide.category] || "";
-    const shortLabel = slide.label.replace("Round ", "R").replace("Bonus Question ", "★");
+    const roundNum = slides.filter((s, j) => s.type === 'question' && !s.isBonus && j <= i).length;
+    const bonusNum = slides.filter((s, j) => s.type === 'question' && j <= i).length;
+    const displayNum = slide.isBonus ? bonusNum : roundNum;
 
     const row = document.createElement("div");
     row.className = "qrow";
@@ -240,14 +373,17 @@ function buildEditor(slides) {
 
     row.innerHTML = `
       <div class="qrow-main">
-        <span class="qrow-label">${shortLabel}</span>
+        <button class="qrow-bonus-toggle ${slide.isBonus ? 'bonus-active' : ''}" data-bonus="${i}" title="Toggle regular/bonus">
+          <span class="bonus-number">${displayNum}</span>
+          <span class="bonus-star">${'★'}</span>
+        </button>
         <select class="qrow-cat ${catClass}" data-c="${i}">
           <option value="People"  ${slide.category === "People" ? "selected" : ""}>People</option>
           <option value="Places"  ${slide.category === "Places" ? "selected" : ""}>Places</option>
           <option value="Things"  ${slide.category === "Things" ? "selected" : ""}>Things</option>
         </select>
         <input class="qrow-question" value="${slide.question.replace(/"/g, '&quot;')}" data-q="${i}" placeholder="Question…">
-        ${!isBonus ? `<button class="qrow-rand" data-rand="${i}" title="Randomise question">🎲</button>` : ''}
+        <button class="qrow-rand" data-rand="${i}" title="Randomise question">🎲</button>
         <button class="qrow-toggle" data-toggle="${i}">▼</button>
       </div>
       <div class="qrow-answer hidden">
@@ -256,7 +392,45 @@ function buildEditor(slides) {
       ${aoSection}
     `;
     editor.appendChild(row);
+
+    // Insert intermission divider after the Nth question
+    if (intermissionOn && questionNum === intermissionAfterRound) {
+      const interRow = document.createElement("div");
+      interRow.className = "intermission-row";
+      interRow.innerHTML = `
+        <div class="intermission-line"></div>
+        <button class="intermission-arrow" id="interUp" ${intermissionAfterRound <= 1 ? 'disabled' : ''}>▲</button>
+        <button class="intermission-toggle intermission-on">Intermission: ON</button>
+        <button class="intermission-arrow" id="interDown" ${intermissionAfterRound >= totalQuestions - 1 ? 'disabled' : ''}>▼</button>
+        <div class="intermission-line"></div>
+      `;
+      editor.appendChild(interRow);
+    }
   });
+
+  // If intermission is off but there are enough questions, show a dimmed divider at current position
+  if (!intermissionOn && totalQuestions >= 2) {
+    const lastQIdx = intermissionAfterRound;
+    // Find the last qrow before position
+    let inserted = false;
+    let qNum = 0;
+    editor.querySelectorAll(".qrow").forEach(qrow => {
+      qNum++;
+      if (qNum === lastQIdx && !inserted) {
+        const interRow = document.createElement("div");
+        interRow.className = "intermission-row";
+        interRow.innerHTML = `
+          <div class="intermission-line"></div>
+          <button class="intermission-arrow" id="interUp" disabled>▲</button>
+          <button class="intermission-toggle">Intermission: OFF</button>
+          <button class="intermission-arrow" id="interDown" disabled>▼</button>
+          <div class="intermission-line"></div>
+        `;
+        qrow.parentNode.insertBefore(interRow, qrow.nextSibling);
+        inserted = true;
+      }
+    });
+  }
 
   // Category pill colour on change
   editor.querySelectorAll(".qrow-cat").forEach(sel => {
@@ -295,6 +469,53 @@ function buildEditor(slides) {
       await randomiseAnswerOptions(parseInt(btn.dataset.randao));
     });
   });
+
+  editor.querySelectorAll(".qrow-bonus-toggle").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const idx = parseInt(btn.dataset.bonus);
+      readEditorChanges(slides);
+      slides[idx].isBonus = !slides[idx].isBonus;
+      assignSlideLabels();
+      localStorage.setItem('triviaData', JSON.stringify(slides));
+      buildProgressBar();
+      buildEditor(slides);
+    });
+  });
+
+  // Intermission toggle
+  const interToggle = editor.querySelector(".intermission-toggle");
+  if (interToggle) {
+    interToggle.addEventListener("click", () => {
+      intermissionOn = !intermissionOn;
+      localStorage.setItem('intermissionOn', intermissionOn);
+      buildEditor(slides);
+    });
+  }
+
+  // Intermission up arrow
+  const interUp = editor.querySelector("#interUp");
+  if (interUp) {
+    interUp.addEventListener("click", () => {
+      if (intermissionAfterRound > 1) {
+        intermissionAfterRound--;
+        localStorage.setItem('intermissionAfterRound', intermissionAfterRound);
+        buildEditor(slides);
+      }
+    });
+  }
+
+  // Intermission down arrow
+  const interDown = editor.querySelector("#interDown");
+  if (interDown) {
+    interDown.addEventListener("click", () => {
+      const total = slides.filter(s => s.type === "question").length;
+      if (intermissionAfterRound < total - 1) {
+        intermissionAfterRound++;
+        localStorage.setItem('intermissionAfterRound', intermissionAfterRound);
+        buildEditor(slides);
+      }
+    });
+  }
 }
 
 function readEditorChanges(slides) {
@@ -322,7 +543,7 @@ function buildProgressBar() {
   }
   bar.innerHTML = "";
 
-  PROGRESS_STEPS.forEach((step, idx) => {
+  getProgressSteps().forEach((step, idx) => {
     const item = document.createElement("div");
     item.className = "prog-item" + (step.bonus ? " bonus" : "");
     item.dataset.step = idx;
@@ -330,6 +551,19 @@ function buildProgressBar() {
       <div class="prog-badge"></div>
       <span class="prog-item-number">${step.display}</span>
     `;
+    item.addEventListener("click", () => {
+      // Find the slide index for this step
+      let qCount = 0;
+      for (let i = 0; i < slides.length; i++) {
+        if (slides[i].type !== "question") continue;
+        qCount++;
+        if (qCount === idx + 1) {
+          current = i;
+          showSlide();
+          break;
+        }
+      }
+    });
     bar.appendChild(item);
   });
 }
@@ -347,7 +581,7 @@ function updateProgressBar(slide) {
 
   if (!isQuestion) return;
 
-  const stepIdx = PROGRESS_STEPS.findIndex(s => s.label === slide.label);
+  const stepIdx = getProgressSteps().findIndex(s => s.label === slide.label);
   if (stepIdx === -1) return;
 
   const bgColour = CAT_COLOURS[slide.category] || '#5CC2E6';
@@ -428,6 +662,39 @@ function setSpriteFrame(el, frame) {
   const { col, row } = frameToCoords(wrapped);
   el.style.setProperty('--sprite-col', col);
   el.style.setProperty('--sprite-row', row);
+}
+
+function adaptAnswerCardsLayout() {
+  const grid = document.getElementById('answerCards');
+  const qWrap = document.getElementById('questionWrap');
+  const qText = document.getElementById('questionText');
+  const slide = document.getElementById('slide');
+  if (!grid || !qWrap || !qText || !slide) return;
+
+  const cardCount = grid.querySelectorAll('.answer-card').length;
+  if (cardCount <= 5) {
+    grid.style.gridTemplateColumns = `repeat(${cardCount}, minmax(14rem, 1fr))`;
+  } else {
+    grid.style.gridTemplateColumns = 'repeat(2, minmax(14rem, 1fr))';
+  }
+
+  requestAnimationFrame(() => {
+    const slideH = slide.clientHeight;
+    const qH = qText.getBoundingClientRect().height;
+    const gap = parseFloat(getComputedStyle(qWrap).gap) || 32;
+    const cardsH = slideH * 0.55;
+
+    const totalNeeded = qH + cardsH + gap;
+
+    if (totalNeeded > slideH && slideH > 0) {
+      const scale = Math.max(0.5, slideH / totalNeeded);
+      qText.style.fontSize = `clamp(18px, ${6 * scale}vw, ${80 * scale}px)`;
+      qWrap.style.setProperty('--scale', scale);
+    } else {
+      qText.style.fontSize = '';
+      qWrap.style.setProperty('--scale', 1);
+    }
+  });
 }
 
 function startCardSpriteAnimations() {
@@ -620,6 +887,32 @@ async function renderSlide(slide) {
       <h1 class="promo">${slide.text}</h1>
     `;
 
+  } else if (slide.type === "intermission") {
+    container.className = "full-height";
+    container.innerHTML = `
+      <div class="score-header">
+        <img class="score-gif" src="img/question.gif" alt="">
+        <h1 class="tutorial-text">${slide.text}</h1>
+      </div>
+      <div class="promo-frame">
+        <img id="promoImg" src="img/endpromo1.png" alt="" class="promo-img" onerror="this.style.display='none'">
+      </div>
+    `;
+    const promoImages = ["img/endpromo1.png", "img/endpromo2.png", "img/endpromo3.png"];
+    let promoIndex = 0;
+    promoInterval = setInterval(() => {
+      promoIndex = (promoIndex + 1) % promoImages.length;
+      const el = document.getElementById("promoImg");
+      if (!el) return;
+      el.style.opacity = "0";
+      setTimeout(() => {
+        el.src = promoImages[promoIndex];
+        el.style.display = "";
+        el.onerror = () => { el.style.display = "none"; };
+        el.style.opacity = "1";
+      }, 800);
+    }, 8000);
+
   } else if (slide.type === "question") {
     container.className = "";
     const catSymbols = {
@@ -647,7 +940,7 @@ async function renderSlide(slide) {
         ${answerCardsHTML}
       </div>
 
-      <div id="answer" style="opacity:0">${slide.answer}</div>
+      <div id="answer" style="${answersMode ? 'display:none' : 'opacity:0'}">${slide.answer}</div>
     `;
     resetTimer();
     container.querySelectorAll('.answer-card').forEach((card, idx) => {
@@ -657,6 +950,7 @@ async function renderSlide(slide) {
     });
 
     startCardSpriteAnimations();
+    adaptAnswerCardsLayout();
   }
 
   setCategoryBackground(slide);
@@ -720,7 +1014,7 @@ function toggleAnswersMode(on) {
 }
 
 function updateAnswersCount(val) {
-  answersCount = Math.max(1, Math.min(9, parseInt(val) || 4));
+  answersCount = Math.max(1, Math.min(8, parseInt(val) || 4));
   clearAnswerOptions();
 }
 
@@ -733,9 +1027,6 @@ function toggleShowPromos(on) {
 function toggleBWMode() {
   bwMode = !bwMode;
   document.body.classList.toggle("bw-mode", bwMode);
-  const btn = document.getElementById("bwToggleBtn");
-  btn.classList.toggle("active", bwMode);
-  btn.textContent = bwMode ? "🎨 Colour Mode" : "⬛ B&W Mode";
   if (slides[current]) updateProgressBar(slides[current]);
 }
 
@@ -745,41 +1036,166 @@ function toggleFullscreen() {
   else document.exitFullscreen();
 }
 
+// ── Keyboard shortcuts ────────────────────────────────────────
+function displayKeyName(key) {
+  if (key === ' ') return 'SPACE';
+  if (key === 'ArrowRight') return '➡';
+  if (key === 'ArrowLeft') return '⬅';
+  if (key === 'ArrowUp') return '⬆';
+  if (key === 'ArrowDown') return '⬇';
+  return key.toUpperCase();
+}
+
+function buildShortcutList() {
+  const list = document.getElementById('shortcutList');
+  list.innerHTML = '';
+  for (const [action, cfg] of Object.entries(shortcuts)) {
+    if (action === 'toggleCards') continue; // special: 1–9
+    const li = document.createElement('li');
+    const keyClass = shortcutEditing ? 'shortcut-key clickable' : 'shortcut-key';
+    const capturingClass = capturingKey === action ? ' capturing' : '';
+    li.innerHTML = `
+      <span class="shortcut-action">${cfg.action}</span>
+      <span class="${keyClass}${capturingClass}" data-action="${action}">${displayKeyName(cfg.key)}</span>
+    `;
+    list.appendChild(li);
+  }
+  // Always show the 1–9 row (non-editable)
+  const li9 = document.createElement('li');
+  li9.innerHTML = `
+    <span class="shortcut-action">Toggle Card Used</span>
+    <span class="shortcut-key">1–9</span>
+  `;
+  list.appendChild(li9);
+
+  // Wire up click-to-capture in edit mode
+  if (shortcutEditing) {
+    list.querySelectorAll('.shortcut-key.clickable').forEach(el => {
+      el.addEventListener('click', () => {
+        const action = el.dataset.action;
+        if (capturingKey === action) {
+          capturingKey = null;
+        } else {
+          capturingKey = action;
+        }
+        buildShortcutList();
+      });
+    });
+  }
+}
+
+function toggleShortcutEdit() {
+  shortcutEditing = !shortcutEditing;
+  capturingKey = null;
+  const btn = document.getElementById('shortcutEditBtn');
+  const resetBtn = document.getElementById('shortcutResetBtn');
+  btn.textContent = shortcutEditing ? 'Done' : 'Edit';
+  resetBtn.classList.toggle('visible', shortcutEditing);
+  buildShortcutList();
+}
+
+function resetShortcuts() {
+  shortcuts = JSON.parse(JSON.stringify(DEFAULT_SHORTCUTS));
+  capturingKey = null;
+  localStorage.setItem('shortcuts', JSON.stringify(shortcuts));
+  buildShortcutList();
+}
+
+function saveShortcuts() {
+  localStorage.setItem('shortcuts', JSON.stringify(shortcuts));
+}
+
+// ── Build presentation slides (with intermission if enabled) ──
+function buildPresentationSlides() {
+  const base = [...slides];
+  if (!intermissionOn) return base;
+
+  const questions = base.filter(s => s.type === "question");
+  // Find the index in base of the question after which the intermission goes
+  let qCount = 0;
+  for (let i = 0; i < base.length; i++) {
+    if (base[i].type === "question") {
+      qCount++;
+      if (qCount === intermissionAfterRound) {
+        const intermission = { type: "intermission", text: "Intermission Break" };
+        const result = [...base];
+        result.splice(i + 1, 0, intermission);
+        return result;
+      }
+    }
+  }
+  return base;
+}
+
 // ── Boot ──────────────────────────────────────────────────────
 async function startApp() {
   slides = await loadTriviaData();
-  buildEditor(slides);
-  buildProgressBar();
+  questionCount = slides.filter(s => s.type === 'question').length;
 
-  // ── Load persisted settings ──────────────────────────────
   answersMode = localStorage.getItem('answerOptionsMode') === 'true';
   answersCount = parseInt(localStorage.getItem('answerOptionCount') || '4');
   showPromos = localStorage.getItem('showPromos') !== 'false';
+  bwMode = localStorage.getItem('bwMode') === 'true';
+  intermissionOn = localStorage.getItem('intermissionOn') === 'true';
+  intermissionAfterRound = parseInt(localStorage.getItem('intermissionAfterRound') || '0');
+  if (intermissionAfterRound < 1) intermissionAfterRound = Math.max(1, Math.floor(questionCount / 2));
+  const storedShortcuts = localStorage.getItem('shortcuts');
+  if (storedShortcuts) {
+    try { shortcuts = JSON.parse(storedShortcuts); } catch(e) {}
+  }
+  document.body.classList.toggle("bw-mode", bwMode);
+
+  buildEditor(slides);
+  buildProgressBar();
+  buildShortcutList();
 
   const aoToggle = document.getElementById('toggleAnswerOptions');
   const promoToggle = document.getElementById('togglePromos');
+  const bwToggle = document.getElementById('toggleBWMode');
   const countVal = document.getElementById('answerCountVal');
+  const qCountVal = document.getElementById('questionCountVal');
+  const answerCountRow = document.getElementById('answerCountRow');
 
   if (aoToggle) aoToggle.checked = answersMode;
   if (promoToggle) promoToggle.checked = showPromos;
+  if (bwToggle) bwToggle.checked = bwMode;
   if (countVal) countVal.textContent = answersCount;
-
-  const headerActions = document.getElementById("editorHeaderActions");
-  const bwBtn = document.createElement("button");
-  bwBtn.id = "bwToggleBtn";
-  bwBtn.textContent = "⬛ B&W Mode";
-  bwBtn.onclick = toggleBWMode;
-  headerActions.insertBefore(bwBtn, headerActions.firstChild);
+  if (qCountVal) qCountVal.textContent = questionCount;
+  if (answerCountRow) answerCountRow.classList.toggle('visible', answersMode);
 }
 
+
 startApp();
+
+// ── Shortcut edit/reset buttons ────────────────────────────────
+document.getElementById("shortcutEditBtn").addEventListener("click", toggleShortcutEdit);
+document.getElementById("shortcutResetBtn").addEventListener("click", resetShortcuts);
+
+// ── Auto-save on editor input (debounced) ─────────────────────
+let _autoSaveTimer = null;
+document.getElementById("editorFields").addEventListener("input", () => {
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(() => readEditorChanges(slides), 300);
+});
+document.getElementById("editorFields").addEventListener("change", () => {
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(() => readEditorChanges(slides), 100);
+});
 
 // ── Sidebar control wiring ────────────────────────────────────
 document.getElementById("toggleAnswerOptions").addEventListener("change", e => {
   toggleAnswersMode(e.target.checked);
   localStorage.setItem('answerOptionsMode', answersMode);
+  document.getElementById('answerCountRow').classList.toggle('visible', answersMode);
   readEditorChanges(slides);
   buildEditor(slides);
+});
+
+document.getElementById("toggleBWMode").addEventListener("change", e => {
+  bwMode = e.target.checked;
+  document.body.classList.toggle("bw-mode", bwMode);
+  localStorage.setItem('bwMode', bwMode);
+  if (slides[current]) updateProgressBar(slides[current]);
 });
 
 document.getElementById("answerCountMinus").addEventListener("click", () => {
@@ -792,12 +1208,69 @@ document.getElementById("answerCountMinus").addEventListener("click", () => {
 });
 
 document.getElementById("answerCountPlus").addEventListener("click", () => {
-  const val = Math.min(9, answersCount + 1);
+  const val = Math.min(8, answersCount + 1);
   answersCount = val;
   localStorage.setItem('answerOptionCount', answersCount);
   document.getElementById("answerCountVal").textContent = val;
   clearAnswerOptions();
   if (answersMode) { readEditorChanges(slides); buildEditor(slides); }
+});
+
+document.getElementById("questionCountMinus").addEventListener("click", () => {
+  const val = Math.max(0, questionCount - 1);
+  questionCount = val;
+  document.getElementById("questionCountVal").textContent = val;
+  readEditorChanges(slides);
+  // Rebuild complete slides: framework + questions + closing
+  const framework = buildSlides();
+  const questions = [];
+  const oldQuestions = slides.filter(s => s.type === 'question');
+  for (let i = 0; i < questionCount; i++) {
+    if (i < oldQuestions.length) {
+      questions.push(oldQuestions[i]);
+    } else {
+      questions.push({ type: "question", category: "", question: "", answer: "", answerOptions: [], isBonus: false });
+    }
+  }
+  const closing = [
+    { type: "promo", text: "Visit pathologicalgame.com!", img: "promo2" },
+    { type: "score", text: "Tallying scores..." },
+    { type: "title", text: "Thanks for playing!", img: "lt_logo_motion" },
+  ];
+  const all = [...framework, ...questions, ...closing];
+  slides = showPromos ? all : all.filter(s => s.type !== "promo");
+  assignSlideLabels();
+  localStorage.setItem('triviaData', JSON.stringify(slides));
+  buildProgressBar();
+  buildEditor(slides);
+});
+
+document.getElementById("questionCountPlus").addEventListener("click", () => {
+  const val = Math.min(20, questionCount + 1);
+  questionCount = val;
+  document.getElementById("questionCountVal").textContent = val;
+  readEditorChanges(slides);
+  const framework = buildSlides();
+  const questions = [];
+  const oldQuestions = slides.filter(s => s.type === 'question');
+  for (let i = 0; i < questionCount; i++) {
+    if (i < oldQuestions.length) {
+      questions.push(oldQuestions[i]);
+    } else {
+      questions.push({ type: "question", category: "", question: "", answer: "", answerOptions: [], isBonus: false });
+    }
+  }
+  const closing = [
+    { type: "promo", text: "Visit pathologicalgame.com!", img: "promo2" },
+    { type: "score", text: "Tallying scores..." },
+    { type: "title", text: "Thanks for playing!", img: "lt_logo_motion" },
+  ];
+  const all = [...framework, ...questions, ...closing];
+  slides = showPromos ? all : all.filter(s => s.type !== "promo");
+  assignSlideLabels();
+  localStorage.setItem('triviaData', JSON.stringify(slides));
+  buildProgressBar();
+  buildEditor(slides);
 });
 
 document.getElementById("togglePromos").addEventListener("change", e => {
@@ -810,6 +1283,10 @@ document.getElementById("startTrivia").onclick = () => {
   readEditorChanges(slides);
   document.getElementById("editor").style.display = "none";
   document.getElementById("presentation").style.display = "block";
+  // Build presentation slides with intermission if enabled
+  const presSlides = buildPresentationSlides();
+  slides.length = 0;
+  slides.push(...presSlides);
   current = 0;
   showSlide();
 };
@@ -820,63 +1297,216 @@ document.getElementById("resetWeekly").onclick = () => {
   location.reload();
 };
 
+// ── Save Questions as CSV ────────────────────────────────────
+document.getElementById("saveQuestionsBtn").onclick = () => {
+  readEditorChanges(slides);
+  const questionSlides = slides.filter(s => s.type === 'question');
+  const emptyIdx = questionSlides.findIndex(s => !(s.question || '').trim());
+  if (emptyIdx !== -1) {
+    alert(`Question ${emptyIdx + 1} is empty. Please fill in all questions before saving.`);
+    return;
+  }
+  let csv = 'label,category,question,answer\n';
+  questionSlides.forEach(s => {
+    const label = (s.label || '').replace(/"/g, '""');
+    const category = (s.category || '').replace(/"/g, '""');
+    const question = (s.question || '').replace(/"/g, '""');
+    const answer = (s.answer || '').replace(/"/g, '""');
+    csv += `"${label}","${category}","${question}","${answer}"\n`;
+  });
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'weekly.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+// ── Upload Questions from CSV ────────────────────────────────
+document.getElementById("uploadQuestionsBtn").onclick = () => {
+  document.getElementById("uploadQuestionsInput").click();
+};
+
+document.getElementById("uploadQuestionsInput").addEventListener("change", e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async (evt) => {
+    const text = evt.target.result;
+    const parsed = parseWeeklyCSV(text);
+    // Convert to slides format
+    const framework = buildSlides();
+    const questions = [];
+    const closing = [
+      { type: "promo", text: "Visit pathologicalgame.com!", img: "promo2" },
+      { type: "score", text: "Tallying scores..." },
+      { type: "title", text: "Thanks for playing!", img: "lt_logo_motion" },
+    ];
+    for (const [label, data] of Object.entries(parsed)) {
+      if (data && typeof data === 'object' && data.question) {
+        questions.push({
+          type: "question",
+          label: label,
+          category: data.category || "",
+          question: data.question,
+          answer: data.answer || "",
+          answerOptions: [],
+          isBonus: label.toLowerCase().includes("bonus"),
+        });
+      }
+    }
+    const all = [...framework, ...questions, ...closing];
+    slides = showPromos ? all : all.filter(s => s.type !== "promo");
+    questionCount = slides.filter(s => s.type === 'question').length;
+    document.getElementById("questionCountVal").textContent = questionCount;
+    assignSlideLabels();
+    localStorage.setItem("triviaData", JSON.stringify(slides));
+    buildProgressBar();
+    buildEditor(slides);
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
 document.getElementById("fullscreenBtn").onclick = toggleFullscreen;
+
+let decisionActive = false;
+let savedSlideHTML = '';
 
 function toggleDecisionOverlay() {
   const slide = slides[current];
-  const overlay = document.getElementById("decisionOverlay");
-  if (!slide || !overlay) return;
-  if (slide.type === "question" && !slide.label.toLowerCase().includes("bonus")) {
-    overlay.style.display = overlay.style.display === "none" ? "flex" : "none";
+  if (!slide || slide.type !== "question" || slide.isBonus) return;
+  const slideEl = document.getElementById('slide');
+  const timerContainer = document.getElementById("timerBarContainer");
+
+  if (decisionActive) {
+    dismissDecision();
+    return;
   }
+
+  decisionActive = true;
+  savedSlideHTML = slideEl.innerHTML;
+  timerContainer.style.opacity = '0';
+
+  slideEl.innerHTML = `
+    <div class="decision-slide">
+      <p class="decision-subtitle">Top 2 answers, would you like to:</p>
+      <div class="decision-choices">
+        <span class="decision-choice" id="makePeaceBtn">
+          Make<br>Peace
+          <span class="decision-points">1 point each</span>
+        </span>
+        <span class="decision-choice" id="doubleBtn">
+          Double<br>or<br>Nothing
+          <span class="decision-points">2 points to winner</span>
+        </span>
+      </div>
+      <img class="decision-gif" src="img/decision.gif" alt="">
+    </div>
+  `;
+
+  document.getElementById("makePeaceBtn").addEventListener("click", () => {
+    dismissDecision();
+    current++;
+    showSlide();
+  });
+  document.getElementById("doubleBtn").addEventListener("click", () => {
+    dismissDecision();
+  });
 }
 
-document.getElementById("makePeaceBtn").onclick = () => {
-  document.getElementById("decisionOverlay").style.display = "none";
-  current++;
-  showSlide();
-};
-
-document.getElementById("doubleBtn").onclick = () => {
-  document.getElementById("decisionOverlay").style.display = "none";
-};
+function dismissDecision() {
+  const slideEl = document.getElementById('slide');
+  const timerContainer = document.getElementById("timerBarContainer");
+  decisionActive = false;
+  slideEl.innerHTML = savedSlideHTML;
+  timerContainer.style.opacity = '1';
+  startCardSpriteAnimations();
+  const clickHandlers = slideEl.querySelectorAll('.answer-card');
+  clickHandlers.forEach((card, idx) => {
+    card.addEventListener('click', () => toggleAnswerCard(idx + 1));
+  });
+}
 
 // ── Keyboard ──────────────────────────────────────────────────
 document.addEventListener("keydown", e => {
+  // If capturing a shortcut key in the editor
+  if (capturingKey && document.getElementById("editor").style.display !== "none") {
+    e.preventDefault();
+    shortcuts[capturingKey].key = e.key;
+    capturingKey = null;
+    saveShortcuts();
+    buildShortcutList();
+    return;
+  }
+
   if (document.getElementById("presentation").style.display === "none") return;
-  if (e.key === "ArrowRight") { current++; showSlide(1); }
-  if (e.key === "ArrowLeft") { current--; showSlide(-1); }
-  if (e.key === " ") { e.preventDefault(); startTimer(); }
-  if (e.key.toLowerCase() === "r") resetTimer();
-  if (e.key.toLowerCase() === "q") revealQuestion();
-  if (e.key.toLowerCase() === "a") {
+
+  const key = e.key;
+  if (key === shortcuts.nextSlide.key) { current++; showSlide(1); }
+  else if (key === shortcuts.prevSlide.key) { current--; showSlide(-1); }
+  else if (key === shortcuts.startTimer.key) { e.preventDefault(); startTimer(); }
+  else if (key.toLowerCase() === shortcuts.resetTimer.key) resetTimer();
+  else if (key.toLowerCase() === shortcuts.revealQuestion.key) revealQuestion();
+  else if (key.toLowerCase() === shortcuts.revealAnswer.key) {
     const ans = document.getElementById("answer");
     if (ans) ans.style.opacity = "1";
   }
-  if (e.key.toLowerCase() === "d") toggleDecisionOverlay();
-  if (e.key.toLowerCase() === "s" && answersMode) toggleAllAnswerCards();
-  const num = parseInt(e.key);
-  if (!isNaN(num) && num >= 1 && num <= 9) {
-    toggleAnswerCard(num);
+  else if (key.toLowerCase() === shortcuts.decisionOverlay.key) toggleDecisionOverlay();
+  else if (key.toLowerCase() === shortcuts.showAnswerCards.key && answersMode) toggleAllAnswerCards();
+  else {
+    const num = parseInt(key);
+    if (!isNaN(num) && num >= 1 && num <= 9) {
+      toggleAnswerCard(num);
+    }
   }
 });
 
 document.getElementById("backBtn").onclick = () => {
   document.getElementById("presentation").style.display = "none";
   document.getElementById("editor").style.display = "block";
+  // Reload slides from saved state (presentation mutated the array)
+  const stored = localStorage.getItem("triviaData");
+  if (stored) {
+    slides.length = 0;
+    slides.push(...JSON.parse(stored));
+  }
+  buildEditor(slides);
   resetTimer();
 };
 
 document.getElementById("fullscreenBtnPresentation").onclick = toggleFullscreen;
 
-// ── Cursor idle — hide nav buttons after 2s of no movement ───
+// ── Timer click → start/reset ─────────────────────────────────
+document.getElementById("timerBarContainer").addEventListener("click", () => {
+  if (interval || preCountdown) {
+    resetTimer();
+  } else {
+    startTimer();
+  }
+});
+
+// ── Side nav buttons ──────────────────────────────────────────
+document.getElementById("slideLeftBtn").addEventListener("click", () => {
+  current--;
+  showSlide(-1);
+});
+document.getElementById("slideRightBtn").addEventListener("click", () => {
+  current++;
+  showSlide(1);
+});
+
+// ── Cursor idle — hide nav buttons and cursor after 2s ───────
 let cursorTimer = null;
 const pres = document.getElementById("presentation");
 
 document.addEventListener("mousemove", () => {
   pres.classList.add("cursor-active");
+  pres.style.cursor = "";
   clearTimeout(cursorTimer);
   cursorTimer = setTimeout(() => {
     pres.classList.remove("cursor-active");
+    pres.style.cursor = "none";
   }, 2000);
 });
