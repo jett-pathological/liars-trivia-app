@@ -2046,7 +2046,7 @@ body.bw-mode .answer-option-num {
   user-select: none;
   text-transform: uppercase;
   letter-spacing: 1px;
-  opacity: 0.75;
+  opacity: 1;
   display: flex;
   flex-direction: column;
   align-items: center;

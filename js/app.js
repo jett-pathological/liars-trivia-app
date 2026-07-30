@@ -7,6 +7,8 @@ let promoInterval = null;
 let answersMode = false;   // show answer option cards on question slides
 let answersCount = 4;      // how many answer cards to show
 let showPromos = true;     // whether promo slides are included
+let showTutorials = true;  // whether tutorial slides are shown
+let showBonusPromo = true; // show the IG bonus promo tutorial even when tutorials are off
 let intermissionOn = false; // whether intermission slide is shown
 let intermissionAfterRound = 3; // number of questions before intermission
 const questionBank = {};   // keyed by category, loaded on demand
@@ -81,10 +83,16 @@ function parseWeeklyCSV(text) {
   const result = {};
   for (const row of rows) {
     if (row.label && row.category && row.question) {
+      const answerOptions = [];
+      for (let i = 1; i <= 8; i++) {
+        const val = row[`answer_option_${i}`];
+        if (val != null) answerOptions.push(val);
+      }
       result[row.label] = {
         category: row.category,
         question: row.question,
         answer: row.answer || "",
+        answerOptions,
       };
     }
   }
@@ -316,7 +324,7 @@ async function loadTriviaData() {
         category: data.category || "",
         question: data.question,
         answer: data.answer || "",
-        answerOptions: [],
+        answerOptions: data.answerOptions || [],
         isBonus: label.toLowerCase().includes("bonus"),
       });
     }
@@ -1105,6 +1113,16 @@ function saveShortcuts() {
   localStorage.setItem('shortcuts', JSON.stringify(shortcuts));
 }
 
+// ── Filter slides per display toggles ─────────────────────────
+function getVisibleSlides() {
+  return slides.filter(s => {
+    if (s.type !== 'tutorial') return true;
+    if (s.text && s.text.toLowerCase().includes('bonus question sneak peeks'))
+      return showTutorials || showBonusPromo;
+    return showTutorials;
+  });
+}
+
 // ── Build presentation slides (with intermission if enabled) ──
 function buildPresentationSlides() {
   const base = [...slides];
@@ -1135,6 +1153,8 @@ async function startApp() {
   answersMode = localStorage.getItem('answerOptionsMode') === 'true';
   answersCount = parseInt(localStorage.getItem('answerOptionCount') || '4');
   showPromos = localStorage.getItem('showPromos') !== 'false';
+  showTutorials = localStorage.getItem('showTutorials') !== 'false';
+  showBonusPromo = localStorage.getItem('showBonusPromo') !== 'false';
   bwMode = localStorage.getItem('bwMode') === 'true';
   intermissionOn = localStorage.getItem('intermissionOn') === 'true';
   intermissionAfterRound = parseInt(localStorage.getItem('intermissionAfterRound') || '0');
@@ -1162,6 +1182,13 @@ async function startApp() {
   if (countVal) countVal.textContent = answersCount;
   if (qCountVal) qCountVal.textContent = questionCount;
   if (answerCountRow) answerCountRow.classList.toggle('visible', answersMode);
+
+  const tutToggle = document.getElementById('toggleTutorials');
+  const bonusPromoToggle = document.getElementById('toggleBonusPromo');
+  const bonusPromoRow = document.getElementById('bonusPromoRow');
+  if (tutToggle) tutToggle.checked = showTutorials;
+  if (bonusPromoToggle) bonusPromoToggle.checked = showBonusPromo;
+  if (bonusPromoRow) bonusPromoRow.style.display = showTutorials ? 'none' : '';
 }
 
 
@@ -1278,11 +1305,28 @@ document.getElementById("togglePromos").addEventListener("change", e => {
   localStorage.setItem('showPromos', showPromos);
 });
 
+document.getElementById("toggleTutorials").addEventListener("change", e => {
+  showTutorials = e.target.checked;
+  localStorage.setItem('showTutorials', showTutorials);
+  document.getElementById('bonusPromoRow').style.display = showTutorials ? 'none' : '';
+});
+
+document.getElementById("toggleBonusPromo").addEventListener("change", e => {
+  showBonusPromo = e.target.checked;
+  localStorage.setItem('showBonusPromo', showBonusPromo);
+});
+
 // ── Button handlers ───────────────────────────────────────────
 document.getElementById("startTrivia").onclick = () => {
   readEditorChanges(slides);
+  // Filter out hidden slides per display toggles
+  const filtered = getVisibleSlides();
+  slides.length = 0;
+  slides.push(...filtered);
   document.getElementById("editor").style.display = "none";
   document.getElementById("presentation").style.display = "block";
+  // Rebuild progress bar to match filtered slide count
+  buildProgressBar();
   // Build presentation slides with intermission if enabled
   const presSlides = buildPresentationSlides();
   slides.length = 0;
@@ -1306,13 +1350,15 @@ document.getElementById("saveQuestionsBtn").onclick = () => {
     alert(`Question ${emptyIdx + 1} is empty. Please fill in all questions before saving.`);
     return;
   }
-  let csv = 'label,category,question,answer\n';
+  let csv = 'label,category,question,answer,answer_option_1,answer_option_2,answer_option_3,answer_option_4,answer_option_5,answer_option_6,answer_option_7,answer_option_8\n';
   questionSlides.forEach(s => {
     const label = (s.label || '').replace(/"/g, '""');
     const category = (s.category || '').replace(/"/g, '""');
     const question = (s.question || '').replace(/"/g, '""');
     const answer = (s.answer || '').replace(/"/g, '""');
-    csv += `"${label}","${category}","${question}","${answer}"\n`;
+    const opts = s.answerOptions || [];
+    const ao = Array.from({ length: 8 }, (_, i) => (opts[i] || '').replace(/"/g, '""'));
+    csv += `"${label}","${category}","${question}","${answer}",${ao.map(v => `"${v}"`).join()}\n`;
   });
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
@@ -1351,7 +1397,7 @@ document.getElementById("uploadQuestionsInput").addEventListener("change", e => 
           category: data.category || "",
           question: data.question,
           answer: data.answer || "",
-          answerOptions: [],
+          answerOptions: data.answerOptions || [],
           isBonus: label.toLowerCase().includes("bonus"),
         });
       }
