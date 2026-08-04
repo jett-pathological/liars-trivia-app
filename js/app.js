@@ -358,8 +358,7 @@ function buildEditor(slides) {
     questionNum++;
     const catClass = { People: "cat-people", Places: "cat-places", Things: "cat-things" }[slide.category] || "";
     const roundNum = slides.filter((s, j) => s.type === 'question' && !s.isBonus && j <= i).length;
-    const bonusNum = slides.filter((s, j) => s.type === 'question' && j <= i).length;
-    const displayNum = slide.isBonus ? bonusNum : roundNum;
+    const displayNum = slide.isBonus ? roundNum + 1 : roundNum;
 
     const row = document.createElement("div");
     row.className = "qrow";
